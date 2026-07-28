@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: safenote-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server_example.js
+    envVars:
+      - key: PORT
+        value: 3000

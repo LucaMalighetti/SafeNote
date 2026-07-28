@@ -1,0 +1,16 @@
+{
+  "name": "safenote-server",
+  "version": "1.0.0",
+  "description": "SafeNote Backend Server",
+  "main": "server_example.js",
+  "scripts": {
+    "start": "node server_example.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.13"
+  }
+}

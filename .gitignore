@@ -1,0 +1,20 @@
+# Android
+.gradle/
+build/
+local.properties
+.cxx/
+*.apk
+*.bundle
+
+# Server
+node_modules/
+users.json
+photos.json
+requests.json
+uploads/
+.env
+
+# IDE
+.idea/
+*.iml
+.DS_Store
