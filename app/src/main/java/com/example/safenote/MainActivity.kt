@@ -791,12 +791,16 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                             coroutineScope.launch {
                                 try {
                                     val response = apiService.verifyCode(mapOf("email" to email, "code" to verificationCode))
-                                    if (response.isSuccessful) {
-                                        val body = response.body()
-                                        val u = body?.get("username") as? String ?: ""
-                                        val c = body?.get("className") as? String ?: ""
-                                        onLoginSuccess(u, c)
-                                    } else errorMessage = "Codice errato o scaduto"
+                                        if (response.isSuccessful) {
+                                            val body = response.body()
+                                            val u = body?.get("username") as? String ?: ""
+                                            val c = body?.get("className") as? String ?: ""
+                                            if (u.isNotEmpty() && c.isNotEmpty()) {
+                                                onLoginSuccess(u, c)
+                                            } else {
+                                                errorMessage = "Errore nel profilo utente"
+                                            }
+                                        } else errorMessage = "Codice errato o scaduto"
                                 } catch (e: Exception) { errorMessage = "Errore" }
                             }
                         },
