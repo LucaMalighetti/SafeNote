@@ -38,14 +38,8 @@ function loadData(file) {
     return [];
 }
 
-// --- RESET RICHIESTO DALL'UTENTE ---
-// Svuota tutto all'avvio per questa volta.
-// Nota: Rimuovi queste 4 righe dopo il primo avvio se vuoi mantenere i dati tra i riavvii.
-if (fs.existsSync('uploads')) fs.rmSync('uploads', { recursive: true, force: true });
-fs.mkdirSync('uploads');
-saveData(USERS_FILE, []);
-saveData(PHOTOS_FILE, []);
-saveData(REQUESTS_FILE, []);
+// --- PERSISTENZA DATI ---
+if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
 let users = loadData(USERS_FILE);
 let photos = loadData(PHOTOS_FILE);

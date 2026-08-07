@@ -753,7 +753,10 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                                             errorMessage = "Email o password errati"
                                         }
                                     }
-                                } catch (e: Exception) { errorMessage = "Errore connessione" }
+                                } catch (e: Exception) { 
+                                    errorMessage = "Errore: ${e.localizedMessage ?: "Connessione fallita"}"
+                                    e.printStackTrace()
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -801,7 +804,10 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                                                 errorMessage = "Errore nel profilo utente"
                                             }
                                         } else errorMessage = "Codice errato o scaduto"
-                                } catch (e: Exception) { errorMessage = "Errore" }
+                                } catch (e: Exception) { 
+                                    errorMessage = "Errore verifica: ${e.localizedMessage}"
+                                    e.printStackTrace()
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
