@@ -14,10 +14,15 @@ const REQUESTS_FILE = 'requests.json';
 
 // --- CONFIGURAZIONE EMAIL ---
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // Usa SSL
     auth: {
         user: 'malighettiluca08@gmail.com',
-        pass: 'fowcccjgdulhhfsi'
+        pass: 'fowcccjgdulhhfsi' // Password per le App (16 lettere senza spazi)
+    },
+    tls: {
+        rejectUnauthorized: false // Evita problemi di certificati su alcuni hosting
     }
 });
 
