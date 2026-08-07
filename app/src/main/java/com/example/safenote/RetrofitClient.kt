@@ -6,7 +6,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 object RetrofitClient {
 
     // Sostituisci questo URL con quello fornito da Render (es. https://safenote.onrender.com/)
-    private const val BASE_URL = "https://safenote-hx79.onrender.com/"
+    private const val BASE_URL = "https://safenote-szau.onrender.com/"
 
     val instance: ApiService by lazy {
         val retrofit = Retrofit.Builder()
