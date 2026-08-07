@@ -648,6 +648,7 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
     var isCodeSent by rememberSaveable { mutableStateOf(false) }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val apiService = RetrofitClient.instance
@@ -668,7 +669,11 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
             ) {
                 Text("SafeNote", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
                 
-                if (!isCodeSent) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+                    Text("Sveglia del server in corso...", style = MaterialTheme.typography.bodyMedium)
+                    Text("Potrebbe richiedere fino a 1 minuto", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                } else if (!isCodeSent) {
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it; errorMessage = null },
@@ -728,6 +733,8 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                     Button(
                         onClick = {
                             coroutineScope.launch {
+                                isLoading = true
+                                errorMessage = null
                                 try {
                                     if (isRegisterMode) {
                                         val response = apiService.requestCode(mapOf(
@@ -759,6 +766,8 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                                 } catch (e: Exception) { 
                                     errorMessage = "Errore: ${e.localizedMessage ?: "Connessione fallita"}"
                                     e.printStackTrace()
+                                } finally {
+                                    isLoading = false
                                 }
                             }
                         },
@@ -771,13 +780,20 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                     TextButton(onClick = { 
                         if (!isRegisterMode) {
                             coroutineScope.launch {
+                                isLoading = true
+                                errorMessage = null
                                 try {
                                     val response = apiService.requestCode(mapOf("email" to email, "action" to "reset_password"))
                                     if (response.isSuccessful) {
                                         isCodeSent = true
                                         isRegisterMode = false 
                                     } else errorMessage = "Email non trovata"
-                                } catch (e: Exception) { errorMessage = "Errore" }
+                                } catch (e: Exception) { 
+                                    errorMessage = "Errore: ${e.localizedMessage ?: "Connessione fallita"}"
+                                    e.printStackTrace() 
+                                } finally {
+                                    isLoading = false
+                                }
                             }
                         }
                     }) {
@@ -795,6 +811,8 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                     Button(
                         onClick = {
                             coroutineScope.launch {
+                                isLoading = true
+                                errorMessage = null
                                 try {
                                     val response = apiService.verifyCode(mapOf("email" to email, "code" to verificationCode))
                                         if (response.isSuccessful) {
@@ -810,6 +828,8 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                                 } catch (e: Exception) { 
                                     errorMessage = "Errore verifica: ${e.localizedMessage}"
                                     e.printStackTrace()
+                                } finally {
+                                    isLoading = false
                                 }
                             }
                         },
@@ -820,11 +840,13 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                 }
 
                 if (errorMessage != null) {
-                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                 }
 
-                TextButton(onClick = { isRegisterMode = !isRegisterMode; isCodeSent = false }) {
-                    Text(if (isRegisterMode) "Hai già un account? Accedi" else "Non hai un account? Registrati")
+                if (!isLoading) {
+                    TextButton(onClick = { isRegisterMode = !isRegisterMode; isCodeSent = false }) {
+                        Text(if (isRegisterMode) "Hai già un account? Accedi" else "Non hai un account? Registrati")
+                    }
                 }
             }
         }
