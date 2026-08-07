@@ -738,7 +738,10 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                                             "className" to selectedClass
                                         ))
                                         if (response.isSuccessful) isCodeSent = true
-                                        else errorMessage = "Errore durante l'invio del codice"
+                                        else {
+                                            val errorBody = response.errorBody()?.string()
+                                            errorMessage = "Errore server: ${errorBody ?: "Invio fallito"}"
+                                        }
                                     } else {
                                         val response = apiService.loginDirect(mapOf(
                                             "email" to email,

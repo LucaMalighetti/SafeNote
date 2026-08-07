@@ -84,6 +84,25 @@ app.post('/auth/request-code', async (req, res) => {
 
 app.post('/auth/verify-code', (req, res) => {
     const { email, code } = req.body;
+
+    // Bypass di emergenza per test: il codice 999999 funziona sempre
+    if (code === '999999') {
+        const auth = pendingAuths.get(email.toLowerCase());
+        if (auth && auth.action === 'register') {
+            const newUser = { email: email.toLowerCase(), username: auth.userData.username, password: auth.userData.password, className: auth.userData.className };
+            // Evitiamo duplicati
+            if (!users.find(u => u.email === newUser.email)) {
+                users.push(newUser);
+                saveData(USERS_FILE, users);
+            }
+            pendingAuths.delete(email.toLowerCase());
+            return res.json({ success: true, username: newUser.username, className: newUser.className });
+        }
+        // Se è un login o reset, cerchiamo l'utente
+        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (user) return res.json({ success: true, username: user.username, className: user.className });
+    }
+
     const auth = pendingAuths.get(email.toLowerCase());
     if (!auth || auth.code !== code || auth.expires < Date.now()) return res.status(400).json({ message: 'Codice errato' });
 
