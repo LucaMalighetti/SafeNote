@@ -65,22 +65,21 @@ app.post('/auth/request-code', async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     pendingAuths.set(email.toLowerCase(), { code, action, userData: { username, password, className }, expires: Date.now() + 600000 });
 
-    try {
-        await transporter.sendMail({
-            from: '"SafeNote Security" <malighettiluca08@gmail.com>',
-            to: email,
-            subject: `Codice SafeNote: ${code}`,
-            text: `Il tuo codice di verifica: ${code}`
-        });
+    // Rispondiamo IMMEDIATAMENTE all'app per far apparire la casella del codice
+    res.json({ success: true });
+
+    // Tentativo di invio email in background (senza bloccare la risposta)
+    transporter.sendMail({
+        from: '"SafeNote Security" <malighettiluca08@gmail.com>',
+        to: email,
+        subject: `Codice SafeNote: ${code}`,
+        text: `Il tuo codice di verifica: ${code}`
+    }).then(() => {
         console.log(`[EMAIL] Inviata con successo a ${email}`);
-        res.json({ success: true });
-    } catch (error) {
-        console.error(`[EMAIL ERROR] Errore critico invio a ${email}: ${error.message}`);
-        // IMPORTANTE: anche se l'email fallisce, rispondiamo OK per permettere all'utente
-        // di arrivare alla schermata del codice e usare il bypass '999999' o vedere i log.
-        console.log(`[FALLBACK] Procedi con il codice per ${email}: ${code}`);
-        res.json({ success: true, warning: 'Email non inviata, usa il codice di backup o controlla i log.' });
-    }
+    }).catch((error) => {
+        console.error(`[EMAIL ERROR] Errore a ${email}: ${error.message}`);
+        console.log(`[FALLBACK] Leggi il codice qui per ${email}: ${code}`);
+    });
 });
 
 app.post('/auth/verify-code', (req, res) => {
