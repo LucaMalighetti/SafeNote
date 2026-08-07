@@ -75,7 +75,10 @@ app.post('/auth/request-code', async (req, res) => {
         console.log(`[EMAIL] Inviata a ${email}`);
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ message: 'Errore invio mail' });
+        console.error(`[EMAIL ERROR] ${error.message}`);
+        // Fallback: se l'invio mail fallisce, stampiamo il codice nei log per permettere il test
+        console.log(`[FALLBACK] Codice per ${email}: ${code}`);
+        res.status(500).json({ success: false, message: 'Errore invio mail: ' + error.message });
     }
 });
 
