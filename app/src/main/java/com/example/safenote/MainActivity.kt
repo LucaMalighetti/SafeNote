@@ -82,6 +82,15 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.FileOutputStream
 
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.storage.storage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
 val CLASSES_CONFIG = listOf(
     SchoolClass("3AI", listOf("Informatica", "Sistemi", "TPS", "Matematica", "Inglese", "Lab Informatica", "GEC", "Telecomunicazioni", "Religione", "Ed. Fisica")),
     SchoolClass("2Z", listOf("Fisica", "Chimica", "Biologia", "Geografia", "Italiano", "Matematica", "Storia", "Inglese", "Scienze", "Ed. Fisica")),
@@ -119,7 +128,6 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
 
         setContent {
@@ -328,12 +336,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-
-                    if (hasPermission) {
-                        ZeroToleranceMonitor { isThreat, _ -> isThreatDetected = isThreat }
-                    }
-
-                    if (isThreatDetected) SecurityLockOverlay()
 
                     if (showIncomingRequestsDialog) {
                         IncomingRequestsDialog(
@@ -641,7 +643,6 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
     var email by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    var verificationCode by rememberSaveable { mutableStateOf("") }
     var selectedClass by rememberSaveable { mutableStateOf(classes.firstOrNull() ?: "") }
     
     var isRegisterMode by rememberSaveable { mutableStateOf(false) }
@@ -651,7 +652,7 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
     var isLoading by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
-    val apiService = RetrofitClient.instance
+    val supabase = SupabaseClient.client
 
     Box(
         modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.background))),
@@ -671,8 +672,7 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                 
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.padding(16.dp))
-                    Text("Sveglia del server in corso...", style = MaterialTheme.typography.bodyMedium)
-                    Text("Potrebbe richiedere fino a 1 minuto", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text("Connessione a Supabase...", style = MaterialTheme.typography.bodyMedium)
                 } else if (!isCodeSent) {
                     OutlinedTextField(
                         value = email,
@@ -737,34 +737,31 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                                 errorMessage = null
                                 try {
                                     if (isRegisterMode) {
-                                        val response = apiService.requestCode(mapOf(
-                                            "email" to email,
-                                            "action" to "register",
-                                            "username" to username,
-                                            "password" to password,
-                                            "className" to selectedClass
-                                        ))
-                                        if (response.isSuccessful) isCodeSent = true
-                                        else {
-                                            val errorBody = response.errorBody()?.string()
-                                            errorMessage = "Errore server: ${errorBody ?: "Invio fallito"}"
+                                        supabase.auth.signUpWith(Email) {
+                                            this.email = email
+                                            this.password = password
+                                            data = buildJsonObject {
+                                                put("username", username)
+                                                put("class_name", selectedClass)
+                                            }
                                         }
+                                        isCodeSent = true
+                                        errorMessage = "Controlla la tua email per confermare l'account"
                                     } else {
-                                        val response = apiService.loginDirect(mapOf(
-                                            "email" to email,
-                                            "password" to password
-                                        ))
-                                        if (response.isSuccessful) {
-                                            val body = response.body()
-                                            val u = body?.get("username") as? String ?: ""
-                                            val c = body?.get("className") as? String ?: ""
+                                        supabase.auth.signInWith(Email) {
+                                            this.email = email
+                                            this.password = password
+                                        }
+                                        val user = supabase.auth.currentUserOrNull()
+                                        if (user != null) {
+                                            val metadata = user.userMetadata
+                                            val u = metadata?.get("username")?.toString()?.replace("\"", "") ?: email
+                                            val c = metadata?.get("class_name")?.toString()?.replace("\"", "") ?: classes.first()
                                             onLoginSuccess(u, c)
-                                        } else {
-                                            errorMessage = "Email o password errati"
                                         }
                                     }
                                 } catch (e: Exception) { 
-                                    errorMessage = "Errore: ${e.localizedMessage ?: "Connessione fallita"}"
+                                    errorMessage = "Errore Supabase: ${e.localizedMessage ?: "Fallito"}"
                                     e.printStackTrace()
                                 } finally {
                                     isLoading = false
@@ -774,68 +771,17 @@ fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit)
                         modifier = Modifier.fillMaxWidth(),
                         enabled = email.isNotBlank() && password.isNotBlank()
                     ) {
-                        Text(if (isRegisterMode) "Invia Codice Registrazione" else "Accedi")
-                    }
-
-                    TextButton(onClick = { 
-                        if (!isRegisterMode) {
-                            coroutineScope.launch {
-                                isLoading = true
-                                errorMessage = null
-                                try {
-                                    val response = apiService.requestCode(mapOf("email" to email, "action" to "reset_password"))
-                                    if (response.isSuccessful) {
-                                        isCodeSent = true
-                                        isRegisterMode = false 
-                                    } else errorMessage = "Email non trovata"
-                                } catch (e: Exception) { 
-                                    errorMessage = "Errore: ${e.localizedMessage ?: "Connessione fallita"}"
-                                    e.printStackTrace() 
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
-                        }
-                    }) {
-                        Text("Password dimenticata?")
+                        Text(if (isRegisterMode) "Registrati (Email di conferma)" else "Accedi")
                     }
                 } else {
-                    Text("Inserisci il codice inviato via email", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedTextField(
-                        value = verificationCode,
-                        onValueChange = { verificationCode = it },
-                        label = { Text("Codice a 6 cifre") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
+                    Text("Email di conferma inviata!", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                    Text("Clicca sul link nella mail ricevuta per attivare l'account, poi torna qui per accedere.", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                    
                     Button(
-                        onClick = {
-                            coroutineScope.launch {
-                                isLoading = true
-                                errorMessage = null
-                                try {
-                                    val response = apiService.verifyCode(mapOf("email" to email, "code" to verificationCode))
-                                        if (response.isSuccessful) {
-                                            val body = response.body()
-                                            val u = body?.get("username") as? String ?: ""
-                                            val c = body?.get("className") as? String ?: ""
-                                            if (u.isNotEmpty() && c.isNotEmpty()) {
-                                                onLoginSuccess(u, c)
-                                            } else {
-                                                errorMessage = "Errore nel profilo utente"
-                                            }
-                                        } else errorMessage = "Codice errato o scaduto"
-                                } catch (e: Exception) { 
-                                    errorMessage = "Errore verifica: ${e.localizedMessage}"
-                                    e.printStackTrace()
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
-                        },
+                        onClick = { isCodeSent = false; isRegisterMode = false },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Verifica e Accedi")
+                        Text("Torna al Login")
                     }
                 }
 
@@ -1063,43 +1009,60 @@ fun PhotoItem(
 
 @Composable
 fun FullScreenImageOverlay(photo: SharedPhoto, onDismiss: () -> Unit) {
-    val pagerState = rememberPagerState(pageCount = { photo.uris.size })
-    
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            pageSpacing = 16.dp
-        ) { page ->
-            Image(
-                painter = rememberAsyncImagePainter(photo.uris[page]),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().clickable { onDismiss() },
-                contentScale = ContentScale.Fit
-            )
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+    var isThreatDetected by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         }
+    }
+
+    ZeroToleranceMonitor { isThreat, _ -> isThreatDetected = isThreat }
+
+    if (isThreatDetected) {
+        SecurityLockOverlay()
+    } else {
+        val pagerState = rememberPagerState(pageCount = { photo.uris.size })
         
-        // UI Overlays
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp).statusBarsPadding(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(photo.title, color = Color.White, fontWeight = FontWeight.Bold)
-                    Text("${pagerState.currentPage + 1} di ${photo.uris.size}", color = Color.LightGray, fontSize = 12.sp)
-                }
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.background(Color.White.copy(0.2f), CircleShape)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                pageSpacing = 16.dp
+            ) { page ->
+                Image(
+                    painter = rememberAsyncImagePainter(photo.uris[page]),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().clickable { onDismiss() },
+                    contentScale = ContentScale.Fit
+                )
+            }
+            
+            // UI Overlays
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp).statusBarsPadding(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Close, null, tint = Color.White)
+                    Column {
+                        Text(photo.title, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("${pagerState.currentPage + 1} di ${photo.uris.size}", color = Color.LightGray, fontSize = 12.sp)
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.background(Color.White.copy(0.2f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Close, null, tint = Color.White)
+                    }
                 }
             }
         }

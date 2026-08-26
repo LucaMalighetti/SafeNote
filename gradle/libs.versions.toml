@@ -6,7 +6,7 @@ junitVersion = "1.1.5"
 espressoCore = "3.5.1"
 lifecycleRuntimeKtx = "2.10.0"
 activityCompose = "1.13.0"
-kotlin = "2.2.10"
+kotlin = "2.1.0"
 composeBom = "2026.02.01"
 camerax = "1.5.0-alpha06"
 mlkit-object-detection = "17.0.2"
@@ -14,6 +14,9 @@ mlkit-face-detection = "16.1.7"
 mlkit-image-labeling = "17.0.9"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
+supabase = "3.7.0"
+ktor = "3.0.0"
+kotlinx-serialization = "1.7.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -44,7 +47,16 @@ mlkit-objectdetection = { group = "com.google.mlkit", name = "object-detection",
 mlkit-facedetection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkit-face-detection" }
 mlkit-imagelabeling = { group = "com.google.mlkit", name = "image-labeling", version.ref = "mlkit-image-labeling" }
 
+# Supabase
+supabase-bom = { group = "io.github.jan-tennert.supabase", name = "bom", version.ref = "supabase" }
+supabase-auth = { group = "io.github.jan-tennert.supabase", name = "auth-kt" }
+supabase-postgrest = { group = "io.github.jan-tennert.supabase", name = "postgrest-kt" }
+supabase-storage = { group = "io.github.jan-tennert.supabase", name = "storage-kt" }
+ktor-client-android = { group = "io.ktor", name = "ktor-client-android", version.ref = "ktor" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
