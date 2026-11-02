@@ -49,26 +49,7 @@ import com.google.gson.reflect.TypeToken
 import java.io.File
 import java.util.UUID
 
-// --- MODELLO DATI ---
-data class SharedFile(
-    val id: String = UUID.randomUUID().toString(),
-    val uriString: String,
-    val ownerName: String,
-    val fileName: String = "",
-    val fileType: String = ""
-) {
-    val uri: Uri get() = Uri.parse(uriString)
-}
 
-data class ViewRequest(
-    val id: String = UUID.randomUUID().toString(),
-    val photoId: String,
-    val requesterName: String,
-    val ownerName: String,
-    var status: RequestStatus = RequestStatus.PENDING
-)
-
-enum class RequestStatus { PENDING, APPROVED, REJECTED }
 
 class MainActivity : ComponentActivity() {
     private val gson = Gson()

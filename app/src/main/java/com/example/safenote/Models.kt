@@ -5,6 +5,16 @@ import java.util.UUID
 
 data class SchoolClass(val name: String, val tags: List<String>)
 
+data class SharedFile(
+    val id: String = UUID.randomUUID().toString(),
+    val uriString: String,
+    val ownerName: String,
+    val fileName: String = "",
+    val fileType: String = ""
+) {
+    val uri: Uri get() = Uri.parse(uriString)
+}
+
 data class SharedPhoto(
     val id: String = UUID.randomUUID().toString(),
     val uriString: String? = null,
