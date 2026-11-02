@@ -1,25 +1,21 @@
 package com.example.safenote
 
-import android.Manifest
+import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.view.WindowManager
+import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.*
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -27,20 +23,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.CallMade
+import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -49,81 +42,39 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.rememberAsyncImagePainter
 import com.example.safenote.ui.theme.SafeNoteTheme
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetectorOptions
-import com.google.mlkit.vision.label.ImageLabeling
-import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
 import java.util.UUID
-import java.util.concurrent.Executors
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.FileOutputStream
 
-import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.auth.providers.builtin.Email
-import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.storage.storage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+// --- MODELLO DATI ---
+data class SharedFile(
+    val id: String = UUID.randomUUID().toString(),
+    val uriString: String,
+    val ownerName: String,
+    val fileName: String = "",
+    val fileType: String = ""
+) {
+    val uri: Uri get() = Uri.parse(uriString)
+}
 
-val CLASSES_CONFIG = listOf(
-    SchoolClass("3AI", listOf("Informatica", "Sistemi", "TPS", "Matematica", "Inglese", "Lab Informatica", "GEC", "Telecomunicazioni", "Religione", "Ed. Fisica")),
-    SchoolClass("2Z", listOf("Fisica", "Chimica", "Biologia", "Geografia", "Italiano", "Matematica", "Storia", "Inglese", "Scienze", "Ed. Fisica")),
-    SchoolClass("3AC", listOf("Economia", "Diritto", "Francese", "Storia", "Matematica", "Inglese", "Informatica", "Religione", "Ed. Fisica"))
+data class ViewRequest(
+    val id: String = UUID.randomUUID().toString(),
+    val photoId: String,
+    val requesterName: String,
+    val ownerName: String,
+    var status: RequestStatus = RequestStatus.PENDING
 )
 
-val PREDEFINED_TAGS = listOf("Generale") // Usato solo come fallback
-
-fun getTagBrush(tag: String): Brush {
-    val colors = when (tag.lowercase()) {
-        "italiano", "fisica" -> listOf(Color(0xFFFF5252), Color(0xFFB71C1C))
-        "sistemi", "economia", "gec" -> listOf(Color(0xFFFF9800), Color(0xFFE65100))
-        "storia", "geografia", "scienze" -> listOf(Color(0xFFFFF176), Color(0xFFFBC02D))
-        "matematica", "biologia" -> listOf(Color(0xFF69F0AE), Color(0xFF1B5E20))
-        "informatica", "diritto", "telecomunicazioni" -> listOf(Color(0xFF448AFF), Color(0xFF0D47A1))
-        "inglese", "francese" -> listOf(Color(0xFFFF4081), Color(0xFF880E4F))
-        "chimica" -> listOf(Color(0xFF00BCD4), Color(0xFF006064))
-        "tps", "religione" -> listOf(Color(0xFFB388FF), Color(0xFF4A00E0))
-        "lab informatica", "ed. fisica" -> listOf(Color(0xFF00C6FF), Color(0xFF0072FF))
-        else -> listOf(Color.Gray, Color.DarkGray)
-    }
-    return Brush.linearGradient(colors = colors)
-}
-
-fun getTagTextColor(tag: String): Color {
-    return when (tag.lowercase()) {
-        "storia", "telecomunicazioni", "lab teleco" -> Color.Black
-        else -> Color.White
-    }
-}
+enum class RequestStatus { PENDING, APPROVED, REJECTED }
 
 class MainActivity : ComponentActivity() {
-    private val apiService = RetrofitClient.instance
+    private val gson = Gson()
+    private val filesFile by lazy { File(filesDir, "files.json") }
+    private val photosFile by lazy { File(filesDir, "photos.json") }
+    private val requestsFile by lazy { File(filesDir, "requests.json") }
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,1223 +82,489 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            val context = LocalContext.current
-            val prefs = remember { context.getSharedPreferences("safenote_session", android.content.Context.MODE_PRIVATE) }
-            
-            var currentUser by remember { mutableStateOf<String?>(prefs.getString("user", null)) }
-            var currentClass by remember { mutableStateOf<String?>(prefs.getString("class", null)) }
-            var isDarkTheme by rememberSaveable { mutableStateOf(false) }
-            
-            val userProfiles = remember { mutableStateMapOf<String, String>() }
-            val sharedPhotos = remember { mutableStateListOf<SharedPhoto>() }
+            val users = listOf("Luca", "Marco", "Giulia")
+            var currentUser by remember { mutableStateOf<String?>(null) }
+            var isDarkTheme by remember { mutableStateOf(false) }
+
+            val sharedFiles = remember { mutableStateListOf<SharedFile>() }
             val requests = remember { mutableStateListOf<ViewRequest>() }
-            
-            // Zero Tolerance always active
-            val isSecureModeEnabled = true
-            var isThreatDetected by remember { mutableStateOf(false) }
-            
-            var searchQuery by rememberSaveable { mutableStateOf("") }
-            var selectedTagFilter by rememberSaveable { mutableStateOf<String?>(null) }
-            var showTagDialog by rememberSaveable { mutableStateOf(false) }
-            var pendingPhotoUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-            
-            var showIncomingRequestsDialog by rememberSaveable { mutableStateOf(false) }
-            var showSentRequestsDialog by rememberSaveable { mutableStateOf(false) }
-            var fullScreenPhoto by remember { mutableStateOf<SharedPhoto?>(null) }
 
-            var hasPermission by remember { mutableStateOf(false) }
-            val coroutineScope = rememberCoroutineScope()
-            val gson = remember { Gson() }
-            val photosFile = remember { File(context.filesDir, "photos.json") }
-            val requestsFile = remember { File(context.filesDir, "requests.json") }
-            val profilesFile = remember { File(context.filesDir, "profiles.json") }
+            var showIncomingRequestsDialog by remember { mutableStateOf(false) }
+            var showSentRequestsDialog by remember { mutableStateOf(false) }
 
-            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasPermission = it }
+            val context = LocalContext.current
 
-            fun loadData() {
-                try {
-                    if (profilesFile.exists()) {
-                        val type = object : TypeToken<Map<String, String>>() {}.type
-                        val map: Map<String, String> = gson.fromJson(profilesFile.readText(), type)
-                        userProfiles.clear()
-                        userProfiles.putAll(map)
-                    }
-                } catch (e: Exception) { e.printStackTrace() }
-            }
-
+            // Caricamento dati salvati
             LaunchedEffect(Unit) {
-                // Reset dati locali come richiesto (una sola volta)
-                if (!prefs.getBoolean("data_reset_v1", false)) {
-                    photosFile.delete()
-                    requestsFile.delete()
-                    profilesFile.delete()
-                    prefs.edit().clear().putBoolean("data_reset_v1", true).apply()
-                    currentUser = null
-                    currentClass = null
+                if (filesFile.exists()) {
+                    val json = filesFile.readText()
+                    val type = object : TypeToken<List<SharedFile>>() {}.type
+                    val list: List<SharedFile> = gson.fromJson(json, type)
+                    sharedFiles.addAll(list)
+                } else if (photosFile.exists()) {
+                    val json = photosFile.readText()
+                    val type = object : TypeToken<List<SharedFile>>() {}.type
+                    val list: List<SharedFile> = gson.fromJson(json, type)
+                    sharedFiles.addAll(list)
                 }
-
-                loadData()
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                    hasPermission = true
-                } else {
-                    permissionLauncher.launch(Manifest.permission.CAMERA)
-                }
-            }
-
-            // Caricamento Dati dal Server
-            fun refreshData() {
-                currentClass?.let { className ->
-                    lifecycleScope.launch {
-                        try {
-                            val response = apiService.getPhotos(className)
-                            if (response.isSuccessful) {
-                                sharedPhotos.clear()
-                                response.body()?.let { sharedPhotos.addAll(it) }
-                            }
-                        } catch (e: Exception) { e.printStackTrace() }
-                    }
-                }
-                currentUser?.let { username ->
-                    lifecycleScope.launch {
-                        try {
-                            val response = apiService.getRequests(username)
-                            if (response.isSuccessful) {
-                                requests.clear()
-                                response.body()?.let { requests.addAll(it) }
-                            }
-                        } catch (e: Exception) { e.printStackTrace() }
-                    }
+                if (requestsFile.exists()) {
+                    val json = requestsFile.readText()
+                    val type = object : TypeToken<List<ViewRequest>>() {}.type
+                    val list: List<ViewRequest> = gson.fromJson(json, type)
+                    requests.addAll(list)
                 }
             }
 
-            LaunchedEffect(currentClass, currentUser) {
-                refreshData()
-            }
-
+            // Salvataggio dati quando cambiano
             fun saveData() {
-                photosFile.writeText(gson.toJson(sharedPhotos.toList()))
+                filesFile.writeText(gson.toJson(sharedFiles.toList()))
                 requestsFile.writeText(gson.toJson(requests.toList()))
-                profilesFile.writeText(gson.toJson(userProfiles.toMap()))
             }
 
             SafeNoteTheme(darkTheme = isDarkTheme) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Crossfade(targetState = currentUser to currentClass, label = "login_transition") { (user, clazz) ->
-                        if (user == null || clazz == null) {
-                            LoginScreen(CLASSES_CONFIG.map { it.name }) { u, c -> 
-                                prefs.edit().putString("user", u).putString("class", c).apply()
-                                currentUser = u
-                                currentClass = c
-                            }
-                        } else {
-                            MainContent(
-                                user = user,
-                                className = clazz,
-                                isDarkTheme = isDarkTheme,
-                                onThemeToggle = { isDarkTheme = !isDarkTheme },
-                                sharedPhotos = sharedPhotos,
-                                requests = requests,
-                                userProfiles = userProfiles,
-                                searchQuery = searchQuery,
-                                onSearchQueryChange = { searchQuery = it },
-                                selectedTagFilter = selectedTagFilter,
-                                onTagFilterChange = { selectedTagFilter = it },
-                                onSignOut = { 
-                                    prefs.edit().clear().apply()
-                                    currentUser = null
-                                    currentClass = null 
-                                },
-                                onSetProfilePic = { uri ->
-                                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    userProfiles[user] = uri.toString()
-                                    saveData()
-                                },
-                                onShowIncomingRequests = { showIncomingRequestsDialog = true },
-                                onShowSentRequests = { showSentRequestsDialog = true },
-                                onRefresh = { refreshData() },
-                                onAddPhotos = { uris ->
-                                    uris.forEach { context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                                    pendingPhotoUris = uris
-                                    showTagDialog = true
-                                },
-                                onSendRequest = { photo ->
-                                    coroutineScope.launch {
-                                        try {
-                                            val request = ViewRequest(photoId = photo.id, requesterName = user, ownerName = photo.ownerName)
-                                            val response = apiService.sendRequest(request)
-                                            if (response.isSuccessful) {
-                                                requests.add(response.body()!!)
-                                            }
-                                        } catch (e: Exception) { e.printStackTrace() }
-                                    }
-                                },
-                                onDeletePhoto = { photo ->
-                                    coroutineScope.launch {
-                                        try {
-                                            val response = apiService.deletePhoto(photo.id)
-                                            if (response.isSuccessful) {
-                                                sharedPhotos.remove(photo)
-                                                requests.removeAll { it.photoId == photo.id }
-                                            }
-                                        } catch (e: Exception) { e.printStackTrace() }
-                                    }
-                                },
-                                onPhotoClick = { fullScreenPhoto = it }
-                            )
-                        }
-                    }
-
-                    // Dialogs & Overlays
-                    if (fullScreenPhoto != null) {
-                        FullScreenImageOverlay(photo = fullScreenPhoto!!, onDismiss = { fullScreenPhoto = null })
-                    }
-
-                    if (showTagDialog && pendingPhotoUris.isNotEmpty()) {
-                        AddTagsDialog(
-                            photoCount = pendingPhotoUris.size,
-                            availableTags = CLASSES_CONFIG.find { it.name == currentClass }?.tags ?: emptyList(),
-                            onDismiss = { showTagDialog = false; pendingPhotoUris = emptyList() },
-                            onConfirm = { tags, title, description, coverUri ->
-                                coroutineScope.launch {
-                                    try {
-                                        val parts = pendingPhotoUris.mapNotNull { uri ->
-                                            context.contentResolver.openInputStream(uri)?.use { input ->
-                                                val file = File(context.cacheDir, "upload_${UUID.randomUUID()}.jpg")
-                                                FileOutputStream(file).use { output -> input.copyTo(output) }
-                                                val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-                                                MultipartBody.Part.createFormData("photos", file.name, requestFile)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (currentUser == null) {
+                        UserSelectionScreen(users) { currentUser = it }
+                    } else {
+                        val user = currentUser!!
+                        Scaffold(
+                            topBar = {
+                                TopAppBar(
+                                    navigationIcon = {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(start = 12.dp)
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(user.take(1), fontWeight = FontWeight.Bold)
+                                        }
+                                    },
+                                    title = {
+                                        Text(user, style = MaterialTheme.typography.titleMedium)
+                                    },
+                                    actions = {
+                                        var menuExpanded by remember { mutableStateOf(false) }
+                                        IconButton(onClick = { menuExpanded = true }) {
+                                            BadgedBox(badge = {
+                                                val pendingCount = requests.count { it.ownerName == user && it.status == RequestStatus.PENDING }
+                                                if (pendingCount > 0) Badge { Text(pendingCount.toString()) }
+                                            }) {
+                                                Icon(Icons.Default.MoreVert, "Menu")
                                             }
                                         }
-
-                                        val ownerBody = currentUser!!.toRequestBody("text/plain".toMediaTypeOrNull())
-                                        val classBody = currentClass!!.toRequestBody("text/plain".toMediaTypeOrNull())
-                                        val titleBody = title.toRequestBody("text/plain".toMediaTypeOrNull())
-                                        val descBody = description.toRequestBody("text/plain".toMediaTypeOrNull())
-                                        val tagsBody = Gson().toJson(tags).toRequestBody("text/plain".toMediaTypeOrNull())
-
-                                        val response = apiService.uploadPhoto(ownerBody, classBody, titleBody, descBody, tagsBody, parts)
-                                        if (response.isSuccessful) {
-                                            response.body()?.let { sharedPhotos.add(0, it) }
-                                            showTagDialog = false
-                                            pendingPhotoUris = emptyList()
+                                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text("Account") },
+                                                leadingIcon = { Icon(Icons.Default.AccountCircle, null) },
+                                                onClick = { currentUser = null; menuExpanded = false }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Richieste in arrivo") },
+                                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.CallReceived, null) },
+                                                onClick = { menuExpanded = false; showIncomingRequestsDialog = true }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Richieste mandate") },
+                                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.CallMade, null) },
+                                                onClick = { menuExpanded = false; showSentRequestsDialog = true }
+                                            )
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
+                                                text = { Text(if (isDarkTheme) "Modalità chiara" else "Modalità scura") },
+                                                leadingIcon = { Icon(if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode, null) },
+                                                onClick = { menuExpanded = false; isDarkTheme = !isDarkTheme }
+                                            )
                                         }
-                                    } catch (e: Exception) { e.printStackTrace() }
+                                    }
+                                )
+                            },
+                            floatingActionButton = {
+                                val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                                    uri?.let {
+                                        try {
+                                            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        } catch (_: Exception) {
+                                        }
+                                        val (fileName, fileType) = getFileNameAndType(context, it)
+                                        sharedFiles.add(0, SharedFile(uriString = it.toString(), ownerName = user, fileName = fileName, fileType = fileType))
+                                        saveData()
+                                    }
                                 }
-                            }
-                        )
-                    }
-
-                    if (showIncomingRequestsDialog) {
-                        IncomingRequestsDialog(
-                            requests = requests.filter { it.ownerName == currentUser },
-                            userProfiles = userProfiles,
-                            onDismiss = { showIncomingRequestsDialog = false },
-                            onAccept = { req -> 
-                                coroutineScope.launch {
-                                    try {
-                                        val response = apiService.updateRequestStatus(req.id, mapOf("status" to "APPROVED"))
-                                        if (response.isSuccessful) {
-                                            val index = requests.indexOfFirst { it.id == req.id }
-                                            if (index != -1) requests[index] = response.body()!!
-                                        }
-                                    } catch (e: Exception) { e.printStackTrace() }
+                                FloatingActionButton(onClick = { picker.launch(arrayOf("*/*")) }) {
+                                    Icon(Icons.Default.Add, contentDescription = "Condividi File")
                                 }
                             },
-                            onReject = { req -> 
-                                coroutineScope.launch {
-                                    try {
-                                        val response = apiService.updateRequestStatus(req.id, mapOf("status" to "REJECTED"))
-                                        if (response.isSuccessful) {
-                                            val index = requests.indexOfFirst { it.id == req.id }
-                                            if (index != -1) requests[index] = response.body()!!
-                                        }
-                                    } catch (e: Exception) { e.printStackTrace() }
-                                }
-                            }
-                        )
-                    }
-
-                    if (showSentRequestsDialog) {
-                        SentRequestsDialog(
-                            requests = requests.filter { it.requesterName == currentUser },
-                            userProfiles = userProfiles,
-                            onDismiss = { showSentRequestsDialog = false }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun MainContent(
-    user: String,
-    className: String,
-    isDarkTheme: Boolean,
-    onThemeToggle: () -> Unit,
-    sharedPhotos: List<SharedPhoto>,
-    requests: List<ViewRequest>,
-    userProfiles: Map<String, String>,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
-    selectedTagFilter: String?,
-    onTagFilterChange: (String?) -> Unit,
-    onSignOut: () -> Unit,
-    onSetProfilePic: (Uri) -> Unit,
-    onShowIncomingRequests: () -> Unit,
-    onShowSentRequests: () -> Unit,
-    onRefresh: () -> Unit,
-    onAddPhotos: (List<Uri>) -> Unit,
-    onSendRequest: (SharedPhoto) -> Unit,
-    onDeletePhoto: (SharedPhoto) -> Unit,
-    onPhotoClick: (SharedPhoto) -> Unit
-) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    var isRefreshing by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-
-    val profilePicLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { onSetProfilePic(it) }
-    }
-
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        if (uris.isNotEmpty()) onAddPhotos(uris)
-    }
-
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            LargeTopAppBar(
-                scrollBehavior = scrollBehavior,
-                title = {
-                    Column {
-                        Text("SafeNote", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-                        Text("Ciao, $user ($className)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                    }
-                },
-                navigationIcon = {
-                    val profilePicUri = userProfiles[user]
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 16.dp, end = 8.dp)
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                            .clickable { profilePicLauncher.launch("image/*") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (profilePicUri != null) {
-                            Image(
-                                painter = rememberAsyncImagePainter(profilePicUri),
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(Icons.Default.Person, null, modifier = Modifier.size(24.dp))
-                        }
-                    }
-                },
-                actions = {
-                    var menuExpanded by remember { mutableStateOf(false) }
-                    IconButton(onClick = onShowIncomingRequests) {
-                        BadgedBox(badge = {
-                            val pendingCount = requests.count { it.ownerName == user && it.status == RequestStatus.PENDING }
-                            if (pendingCount > 0) Badge { Text(pendingCount.toString()) }
-                        }) {
-                            Icon(Icons.Outlined.Notifications, "Richieste")
-                        }
-                    }
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, "Menu")
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Miei invii") },
-                            leadingIcon = { Icon(Icons.Outlined.History, null) },
-                            onClick = { menuExpanded = false; onShowSentRequests() }
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(if (isDarkTheme) "Tema Chiaro" else "Tema Scuro") },
-                            leadingIcon = { Icon(if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode, null) },
-                            onClick = { menuExpanded = false; onThemeToggle() }
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("Esci", color = MaterialTheme.colorScheme.error) },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, null, tint = MaterialTheme.colorScheme.error) },
-                            onClick = { menuExpanded = false; onSignOut() }
-                        )
-                    }
-                }
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { photoPicker.launch("image/*") },
-                icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Pubblica") },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        }
-    ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = {
-                coroutineScope.launch {
-                    isRefreshing = true
-                    onRefresh()
-                    isRefreshing = false
-                }
-            },
-            modifier = Modifier.padding(padding)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Search Bar
-                SearchBar(
-                    query = searchQuery,
-                    onQueryChange = onSearchQueryChange,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-
-                // Tags Row
-                val classTags = CLASSES_CONFIG.find { it.name == className }?.tags ?: emptyList()
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(bottom = 8.dp)
-                ) {
-                    item {
-                        GradientTagChip(
-                            tag = "Tutti",
-                            isSelected = selectedTagFilter == null,
-                            onClick = { onTagFilterChange(null) }
-                        )
-                    }
-                    items(classTags) { tag ->
-                        GradientTagChip(
-                            tag = tag,
-                            isSelected = selectedTagFilter == tag,
-                            onClick = { onTagFilterChange(if (selectedTagFilter == tag) null else tag) }
-                        )
-                    }
-                }
-
-                // Gallery
-                val filteredPhotos = sharedPhotos.filter { p ->
-                    val matchesClass = p.className == className
-                    val matchesQuery = searchQuery.isEmpty() || 
-                                       p.title.contains(searchQuery, ignoreCase = true) || 
-                                       p.ownerName.contains(searchQuery, ignoreCase = true) ||
-                                       p.tags?.any { it.contains(searchQuery, ignoreCase = true) } == true
-                    
-                    val matchesTag = selectedTagFilter == null || 
-                                     p.tags?.any { it.equals(selectedTagFilter, ignoreCase = true) } == true
-
-                    matchesClass && matchesQuery && matchesTag
-                }
-                
-                PhotoGallery(
-                    photos = filteredPhotos,
-                    currentUser = user,
-                    userProfiles = userProfiles,
-                    requests = requests,
-                    onSendRequest = onSendRequest,
-                    onDeletePhoto = onDeletePhoto,
-                    onPhotoClick = onPhotoClick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun GradientTagChip(tag: String, isSelected: Boolean, onClick: () -> Unit) {
-    val brush = if (tag == "Tutti") {
-        Brush.linearGradient(listOf(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.secondaryContainer))
-    } else {
-        getTagBrush(tag)
-    }
-    
-    val textColor = if (tag == "Tutti") {
-        MaterialTheme.colorScheme.onSecondary
-    } else {
-        getTagTextColor(tag)
-    }
-
-    Box(
-        modifier = Modifier
-            .padding(vertical = 4.dp)
-            .clip(CircleShape)
-            .background(brush)
-            .then(
-                if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape) 
-                else Modifier
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (isSelected) {
-                Icon(
-                    Icons.Default.Check, 
-                    null, 
-                    Modifier.size(16.dp).padding(end = 4.dp), 
-                    tint = textColor
-                )
-            }
-            Text(
-                text = tag,
-                color = textColor,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SearchBar(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .clip(RoundedCornerShape(28.dp)),
-        placeholder = { Text("Cerca appunti o publisher...") },
-        leadingIcon = { Icon(Icons.Default.Search, null) },
-        trailingIcon = if (query.isNotEmpty()) {
-            { IconButton(onClick = { onQueryChange("") }) { Icon(Icons.Default.Close, null) } }
-        } else null,
-        colors = TextFieldDefaults.colors(
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent
-        ),
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LoginScreen(classes: List<String>, onLoginSuccess: (String, String) -> Unit) {
-    var email by rememberSaveable { mutableStateOf("") }
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var selectedClass by rememberSaveable { mutableStateOf(classes.firstOrNull() ?: "") }
-    
-    var isRegisterMode by rememberSaveable { mutableStateOf(false) }
-    var isCodeSent by rememberSaveable { mutableStateOf(false) }
-    var passwordVisible by rememberSaveable { mutableStateOf(false) }
-    var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
-
-    val coroutineScope = rememberCoroutineScope()
-    val supabase = SupabaseClient.client
-
-    Box(
-        modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.background))),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(32.dp).shadow(16.dp, RoundedCornerShape(24.dp)),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp).fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text("SafeNote", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.padding(16.dp))
-                    Text("Connessione a Supabase...", style = MaterialTheme.typography.bodyMedium)
-                } else if (!isCodeSent) {
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it; errorMessage = null },
-                        label = { Text("Email") },
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = { Icon(Icons.Default.Email, null) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next)
-                    )
-
-                    if (isRegisterMode) {
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = { username = it },
-                            label = { Text("Nome utente") },
-                            modifier = Modifier.fillMaxWidth(),
-                            leadingIcon = { Icon(Icons.Default.Person, null) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text("Password") },
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = { Icon(Icons.Default.Lock, null) },
-                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null)
-                            }
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
-                    )
-                    
-                    if (isRegisterMode) {
-                        Column(Modifier.fillMaxWidth()) {
-                            Text("Seleziona la tua classe:", style = MaterialTheme.typography.labelMedium)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                classes.forEach { clazz ->
-                                    FilterChip(
-                                        selected = selectedClass == clazz,
-                                        onClick = { selectedClass = clazz },
-                                        label = { Text(clazz) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            coroutineScope.launch {
-                                isLoading = true
-                                errorMessage = null
-                                try {
-                                    if (isRegisterMode) {
-                                        supabase.auth.signUpWith(Email) {
-                                            this.email = email
-                                            this.password = password
-                                            data = buildJsonObject {
-                                                put("username", username)
-                                                put("class_name", selectedClass)
-                                            }
-                                        }
-                                        isCodeSent = true
-                                        errorMessage = "Controlla la tua email per confermare l'account"
-                                    } else {
-                                        supabase.auth.signInWith(Email) {
-                                            this.email = email
-                                            this.password = password
-                                        }
-                                        val user = supabase.auth.currentUserOrNull()
-                                        if (user != null) {
-                                            val metadata = user.userMetadata
-                                            val u = metadata?.get("username")?.toString()?.replace("\"", "") ?: email
-                                            val c = metadata?.get("class_name")?.toString()?.replace("\"", "") ?: classes.first()
-                                            onLoginSuccess(u, c)
-                                        }
+                            floatingActionButtonPosition = FabPosition.End
+                        ) { p ->
+                            Column(Modifier.padding(p)) {
+                                FileGallery(
+                                    files = sharedFiles,
+                                    currentUser = user,
+                                    requests = requests,
+                                    onSendRequest = { file ->
+                                        requests.add(ViewRequest(photoId = file.id, requesterName = user, ownerName = file.ownerName))
+                                        saveData()
                                     }
-                                } catch (e: Exception) { 
-                                    errorMessage = "Errore Supabase: ${e.localizedMessage ?: "Fallito"}"
-                                    e.printStackTrace()
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = email.isNotBlank() && password.isNotBlank()
-                    ) {
-                        Text(if (isRegisterMode) "Registrati (Email di conferma)" else "Accedi")
-                    }
-                } else {
-                    Text("Email di conferma inviata!", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-                    Text("Clicca sul link nella mail ricevuta per attivare l'account, poi torna qui per accedere.", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
-                    
-                    Button(
-                        onClick = { isCodeSent = false; isRegisterMode = false },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Torna al Login")
-                    }
-                }
-
-                if (errorMessage != null) {
-                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-                }
-
-                if (!isLoading) {
-                    TextButton(onClick = { isRegisterMode = !isRegisterMode; isCodeSent = false }) {
-                        Text(if (isRegisterMode) "Hai già un account? Accedi" else "Non hai un account? Registrati")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PhotoGallery(
-    photos: List<SharedPhoto>,
-    currentUser: String,
-    userProfiles: Map<String, String>,
-    requests: List<ViewRequest>,
-    onSendRequest: (SharedPhoto) -> Unit,
-    onDeletePhoto: (SharedPhoto) -> Unit,
-    onPhotoClick: (SharedPhoto) -> Unit
-) {
-    if (photos.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Outlined.Collections, null, Modifier.size(64.dp), Color.Gray.copy(0.4f))
-                Text("Nessun contenuto trovato.", color = Color.Gray)
-            }
-        }
-    } else {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(photos, key = { it.id }) { photo ->
-                val hasAccess = photo.ownerName == currentUser || 
-                               requests.any { it.photoId == photo.id && it.requesterName == currentUser && it.status == RequestStatus.APPROVED }
-                val isPending = requests.any { it.photoId == photo.id && it.requesterName == currentUser && it.status == RequestStatus.PENDING }
-                val hasApprovedRequests = requests.any { it.photoId == photo.id && it.status == RequestStatus.APPROVED }
-
-                PhotoItem(
-                    photo = photo, 
-                    ownerProfilePic = userProfiles[photo.ownerName], 
-                    hasAccess = hasAccess, 
-                    isPending = isPending, 
-                    isOwner = photo.ownerName == currentUser,
-                    hasApprovedRequests = hasApprovedRequests,
-                    onSendRequest = onSendRequest, 
-                    onDeletePhoto = onDeletePhoto,
-                    onPhotoClick = onPhotoClick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun PhotoItem(
-    photo: SharedPhoto, 
-    ownerProfilePic: String?, 
-    hasAccess: Boolean, 
-    isPending: Boolean, 
-    isOwner: Boolean,
-    hasApprovedRequests: Boolean,
-    onSendRequest: (SharedPhoto) -> Unit, 
-    onDeletePhoto: (SharedPhoto) -> Unit,
-    onPhotoClick: (SharedPhoto) -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(260.dp)
-            .clickable(enabled = hasAccess) { onPhotoClick(photo) }
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            // Background / Cover
-            if (photo.coverUri != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(photo.coverUri),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                val tag = photo.tags?.firstOrNull() ?: "Appunti"
-                Box(
-                    modifier = Modifier.fillMaxSize().background(getTagBrush(tag)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = photo.title.ifEmpty { tag }.uppercase(),
-                        color = getTagTextColor(tag),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-            }
-            
-            // Security Overlay
-            if (!hasAccess) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-                    if (isPending) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp, color = Color.White)
-                    } else {
-                        Icon(Icons.Default.Lock, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(40.dp))
-                    }
-                }
-            }
-
-            // Top Bar Overlay (Tag & Delete)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                val tag = photo.tags?.firstOrNull() ?: "Note"
-                Surface(
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)),
-                    color = Color.Transparent
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .background(getTagBrush(tag))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            tag, 
-                            color = getTagTextColor(tag), 
-                            fontSize = 10.sp, 
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-                }
-                
-                if (isOwner) {
-                    IconButton(
-                        onClick = { onDeletePhoto(photo) },
-                        enabled = !hasApprovedRequests,
-                        modifier = Modifier.size(28.dp).background(
-                            if (hasApprovedRequests) Color.Gray.copy(0.3f) else Color.Black.copy(0.3f), 
-                            CircleShape
-                        )
-                    ) {
-                        Icon(
-                            if (hasApprovedRequests) Icons.Default.Block else Icons.Default.Delete, 
-                            null, 
-                            tint = if (hasApprovedRequests) Color.White.copy(0.5f) else Color.White, 
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            }
-
-            // Bottom Info Overlay
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(0.9f))
-                        )
-                    )
-                    .padding(12.dp)
-            ) {
-                Text(
-                    photo.title.ifEmpty { "Senza Titolo" },
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                    if (ownerProfilePic != null) {
-                        Image(
-                            painter = rememberAsyncImagePainter(ownerProfilePic),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp).clip(CircleShape)
-                        )
-                    } else {
-                        Icon(Icons.Default.Person, null, tint = Color.LightGray, modifier = Modifier.size(12.dp))
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text(photo.ownerName, color = Color.LightGray, fontSize = 11.sp)
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.Default.PhotoLibrary, null, tint = Color.White.copy(0.7f), modifier = Modifier.size(12.dp))
-                    Text(" ${photo.photoCount}", color = Color.White.copy(0.7f), fontSize = 11.sp)
-                }
-
-                if (!hasAccess && !isPending) {
-                    Button(
-                        onClick = { onSendRequest(photo) },
-                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth().height(32.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Richiedi Accesso", fontSize = 11.sp)
-                    }
-                } else if (isPending) {
-                    Text(
-                        "In attesa di approvazione...", 
-                        color = Color.Yellow, 
-                        fontSize = 10.sp, 
-                        modifier = Modifier.padding(top = 8.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun FullScreenImageOverlay(photo: SharedPhoto, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val activity = context as? android.app.Activity
-    var isThreatDetected by remember { mutableStateOf(false) }
-
-    DisposableEffect(Unit) {
-        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        onDispose {
-            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        }
-    }
-
-    ZeroToleranceMonitor { isThreat, _ -> isThreatDetected = isThreat }
-
-    if (isThreatDetected) {
-        SecurityLockOverlay()
-    } else {
-        val pagerState = rememberPagerState(pageCount = { photo.uris.size })
-        
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                pageSpacing = 16.dp
-            ) { page ->
-                Image(
-                    painter = rememberAsyncImagePainter(photo.uris[page]),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize().clickable { onDismiss() },
-                    contentScale = ContentScale.Fit
-                )
-            }
-            
-            // UI Overlays
-            Column(modifier = Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).statusBarsPadding(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(photo.title, color = Color.White, fontWeight = FontWeight.Bold)
-                        Text("${pagerState.currentPage + 1} di ${photo.uris.size}", color = Color.LightGray, fontSize = 12.sp)
-                    }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.background(Color.White.copy(0.2f), CircleShape)
-                    ) {
-                        Icon(Icons.Default.Close, null, tint = Color.White)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddTagsDialog(
-    photoCount: Int, 
-    availableTags: List<String>,
-    onDismiss: () -> Unit, 
-    onConfirm: (List<String>, String, String, Uri?) -> Unit
-) {
-    var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
-    var title by rememberSaveable { mutableStateOf("") }
-    var description by rememberSaveable { mutableStateOf("") }
-    var coverUri by rememberSaveable { mutableStateOf<Uri?>(null) }
-    
-    val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        coverUri = uri
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Nuova Pubblicazione") },
-        text = {
-            LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item {
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text("Titolo") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-                item {
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        label = { Text("Descrizione") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2
-                    )
-                }
-                item {
-                    Text("Copertina", style = MaterialTheme.typography.labelLarge)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { coverPicker.launch("image/*") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (coverUri != null) {
-                            Image(
-                                painter = rememberAsyncImagePainter(coverUri),
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.AddPhotoAlternate, null, tint = MaterialTheme.colorScheme.primary)
-                                Text("Scegli un'immagine", fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-                item {
-                    Text("Materia", style = MaterialTheme.typography.labelLarge)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        availableTags.forEach { tag ->
-                            Box(modifier = Modifier.weight(1f, fill = false)) {
-                                GradientTagChip(
-                                    tag = tag,
-                                    isSelected = selectedTag == tag,
-                                    onClick = { selectedTag = tag }
                                 )
                             }
                         }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(listOfNotNull(selectedTag), title, description, coverUri) }, 
-                enabled = selectedTag != null && title.isNotBlank()
-            ) { Text("Pubblica $photoCount foto") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annulla") }
-        }
-    )
-}
 
-@Composable
-fun IncomingRequestsDialog(requests: List<ViewRequest>, userProfiles: Map<String, String>, onDismiss: () -> Unit, onAccept: (ViewRequest) -> Unit, onReject: (ViewRequest) -> Unit) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("Gestione Accessi")
-                TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent) {
-                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
-                        Text("Pendenti", modifier = Modifier.padding(8.dp))
-                    }
-                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
-                        Text("Cronologia", modifier = Modifier.padding(8.dp))
-                    }
-                }
-            }
-        },
-        text = {
-            val filteredList = if (selectedTab == 0) {
-                requests.filter { it.status == RequestStatus.PENDING }
-            } else {
-                requests.filter { it.status != RequestStatus.PENDING }
-            }
-
-            if (filteredList.isEmpty()) {
-                Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                    Text(if (selectedTab == 0) "Nessuna richiesta in sospeso." else "Cronologia vuota.", color = Color.Gray)
-                }
-            } else {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
-                    items(filteredList) { req ->
-                        ListItem(
-                            headlineContent = { Text(req.requesterName, fontWeight = FontWeight.Bold) },
-                            supportingContent = { 
-                                Text(if (req.status == RequestStatus.PENDING) "Richiede accesso" else "Richiesta ${if (req.status == RequestStatus.APPROVED) "accettata" else "rifiutata"}") 
-                            },
-                            leadingContent = {
-                                val profilePic = userProfiles[req.requesterName]
-                                if (profilePic != null) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(profilePic),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(40.dp).clip(CircleShape),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Icon(Icons.Default.AccountCircle, null, modifier = Modifier.size(40.dp))
-                                }
-                            },
-                            trailingContent = {
-                                if (req.status == RequestStatus.PENDING) {
-                                    Row {
-                                        IconButton(onClick = { onAccept(req) }) { Icon(Icons.Default.CheckCircle, null, tint = Color.Green) }
-                                        IconButton(onClick = { onReject(req) }) { Icon(Icons.Default.Cancel, null, tint = Color.Red) }
+                        if (showIncomingRequestsDialog) {
+                            IncomingRequestsDialog(
+                                requests = requests.filter { it.ownerName == user },
+                                files = sharedFiles,
+                                onDismiss = { showIncomingRequestsDialog = false },
+                                onAccept = { req ->
+                                    val index = requests.indexOfFirst { it.id == req.id }
+                                    if (index != -1) {
+                                        requests[index] = req.copy(status = RequestStatus.APPROVED)
+                                        saveData()
                                     }
-                                } else {
-                                    StatusBadge(req.status)
+                                },
+                                onReject = { req ->
+                                    val index = requests.indexOfFirst { it.id == req.id }
+                                    if (index != -1) {
+                                        requests[index] = req.copy(status = RequestStatus.REJECTED)
+                                        saveData()
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
+
+                        if (showSentRequestsDialog) {
+                            SentRequestsDialog(
+                                requests = requests.filter { it.requesterName == user },
+                                files = sharedFiles,
+                                onDismiss = { showSentRequestsDialog = false }
+                            )
+                        }
                     }
                 }
             }
-        },
-        confirmButton = { Button(onClick = onDismiss) { Text("Chiudi") } }
-    )
+        }
+    }
+}
+
+fun getFileNameAndType(context: Context, uri: Uri): Pair<String, String> {
+    var fileName = ""
+    if (uri.scheme == "content") {
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1) {
+                        fileName = cursor.getString(nameIndex) ?: ""
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    if (fileName.isEmpty()) {
+        fileName = uri.lastPathSegment ?: "file"
+    }
+    val fileType = fileName.substringAfterLast('.', "").lowercase()
+    return Pair(fileName, fileType)
+}
+
+fun isImageFile(fileName: String, fileType: String): Boolean {
+    val ext = fileType.ifEmpty { fileName.substringAfterLast('.', "").lowercase() }
+    return ext in listOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+}
+
+fun getMimeType(fileName: String, fileType: String): String {
+    val ext = fileType.ifEmpty { fileName.substringAfterLast('.', "").lowercase() }
+    return when (ext) {
+        "pdf" -> "application/pdf"
+        "txt" -> "text/plain"
+        "md" -> "text/markdown"
+        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "doc" -> "application/msword"
+        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "xls" -> "application/vnd.ms-excel"
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        else -> "*/*"
+    }
+}
+
+fun openFile(context: Context, file: SharedFile) {
+    val mimeType = getMimeType(file.fileName, file.fileType)
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(file.uri, mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(Intent.createChooser(intent, "Apri file"))
+    } catch (_: Exception) {
+        Toast.makeText(context, "Nessuna applicazione disponibile per aprire il file", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun shareFile(context: Context, file: SharedFile) {
+    val mimeType = getMimeType(file.fileName, file.fileType)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType
+        putExtra(Intent.EXTRA_STREAM, file.uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(Intent.createChooser(intent, "Condividi file"))
+    } catch (_: Exception) {
+        Toast.makeText(context, "Impossibile condividere il file", Toast.LENGTH_SHORT).show()
+    }
 }
 
 @Composable
-fun SentRequestsDialog(requests: List<ViewRequest>, userProfiles: Map<String, String>, onDismiss: () -> Unit) {
+fun UserSelectionScreen(users: List<String>, onUserSelected: (String) -> Unit) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Benvenuto su SafeNote", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(32.dp))
+            Text("Seleziona il tuo profilo:")
+            Spacer(Modifier.height(16.dp))
+            users.forEach { user ->
+                Button(
+                    onClick = { onUserSelected(user) },
+                    modifier = Modifier.fillMaxWidth(0.6f).padding(vertical = 4.dp)
+                ) {
+                    Text(user)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FileGallery(
+    files: List<SharedFile>,
+    currentUser: String,
+    requests: List<ViewRequest>,
+    onSendRequest: (SharedFile) -> Unit
+) {
+    if (files.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Nessun file condiviso.") }
+    } else {
+        LazyVerticalGrid(columns = GridCells.Fixed(2), contentPadding = PaddingValues(8.dp)) {
+            items(files) { file ->
+                val hasAccess = file.ownerName == currentUser ||
+                        requests.any { it.photoId == file.id && it.requesterName == currentUser && it.status == RequestStatus.APPROVED }
+                val isPending = requests.any { it.photoId == file.id && it.requesterName == currentUser && it.status == RequestStatus.PENDING }
+
+                FileItem(file, hasAccess, isPending, onSendRequest)
+            }
+        }
+    }
+}
+
+@Composable
+fun FileItem(file: SharedFile, hasAccess: Boolean, isPending: Boolean, onSendRequest: (SharedFile) -> Unit) {
+    val context = LocalContext.current
+    val isImg = isImageFile(file.fileName, file.fileType)
+
+    Card(Modifier.padding(4.dp).fillMaxWidth().height(220.dp)) {
+        Box(Modifier.fillMaxSize()) {
+            if (hasAccess) {
+                if (isImg) {
+                    Box(Modifier.fillMaxSize()) {
+                        Image(
+                            painter = rememberAsyncImagePainter(file.uri),
+                            contentDescription = file.fileName,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        ) {
+                            IconButton(onClick = { openFile(context, file) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, "Apri", tint = Color.White, modifier = Modifier.size(18.dp))
+                            }
+                            IconButton(onClick = { shareFile(context, file) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Default.Share, "Condividi", tint = Color.White, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val ext = file.fileType.ifEmpty { file.fileName.substringAfterLast('.', "").lowercase() }
+                        val (icon, tint) = when (ext) {
+                            "pdf" -> Pair(Icons.Default.PictureAsPdf, Color(0xFFD32F2F))
+                            "xlsx", "xls" -> Pair(Icons.Default.TableChart, Color(0xFF2E7D32))
+                            "docx", "doc" -> Pair(Icons.Default.Description, Color(0xFF1976D2))
+                            "md", "txt" -> Pair(Icons.AutoMirrored.Filled.Article, Color(0xFF00838F))
+                            else -> Pair(Icons.AutoMirrored.Filled.InsertDriveFile, MaterialTheme.colorScheme.primary)
+                        }
+
+                        Spacer(Modifier.height(4.dp))
+                        Icon(icon, contentDescription = file.fileName, tint = tint, modifier = Modifier.size(44.dp))
+
+                        Text(
+                            text = file.fileName.ifEmpty { "File" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Surface(
+                            color = tint.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = ext.uppercase().ifEmpty { "FILE" },
+                                color = tint,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 24.dp)
+                        ) {
+                            IconButton(onClick = { openFile(context, file) }, modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, "Apri", modifier = Modifier.size(20.dp))
+                            }
+                            IconButton(onClick = { shareFile(context, file) }, modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.Default.Share, "Condividi", modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                }
+            } else {
+                Box(Modifier.fillMaxSize().background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                        Icon(Icons.Default.Lock, null, tint = Color.White, modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.height(4.dp))
+                        if (file.fileName.isNotEmpty()) {
+                            Text(
+                                file.fileName,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        if (isPending) {
+                            Text("Richiesta inviata...", color = Color.LightGray, fontSize = 12.sp)
+                        } else {
+                            Button(onClick = { onSendRequest(file) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                                Text("Richiedi Accesso", fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            Surface(
+                color = Color.Black.copy(0.6f),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp)
+                    .clip(RoundedCornerShape(4.dp))
+            ) {
+                Text("Da: ${file.ownerName}", color = Color.White, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp), fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun IncomingRequestsDialog(
+    requests: List<ViewRequest>,
+    files: List<SharedFile>,
+    onDismiss: () -> Unit,
+    onAccept: (ViewRequest) -> Unit,
+    onReject: (ViewRequest) -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Richieste inviate") },
+        title = { Text("Richieste in Arrivo") },
         text = {
             if (requests.isEmpty()) {
-                Text("Non hai ancora inviato richieste.")
+                Text("Non hai nuove richieste.")
             } else {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
                     items(requests) { req ->
-                        ListItem(
-                            headlineContent = { Text("A: ${req.ownerName}") },
-                            supportingContent = { Text("Stato: ${req.status}") },
-                            leadingContent = { Icon(Icons.Outlined.FileUpload, null) },
-                            trailingContent = { StatusBadge(req.status) }
-                        )
+                        val targetFile = files.find { it.id == req.photoId }
+                        val fileLabel = targetFile?.fileName?.ifEmpty { null } ?: "un tuo file"
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(req.requesterName, fontWeight = FontWeight.Bold)
+                                Text("Vuole accedere a: $fileLabel", fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (req.status == RequestStatus.PENDING) {
+                                IconButton(onClick = { onAccept(req) }) { Icon(Icons.Default.Check, null, tint = Color.Green) }
+                                IconButton(onClick = { onReject(req) }) { Icon(Icons.Default.Close, null, tint = Color.Red) }
+                            } else {
+                                Text(req.status.name, fontSize = 10.sp, color = Color.Gray)
+                            }
+                        }
                     }
                 }
             }
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("Chiudi") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Chiudi") } }
+    )
+}
+
+@Composable
+fun SentRequestsDialog(requests: List<ViewRequest>, files: List<SharedFile>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Richieste Mandate") },
+        text = {
+            if (requests.isEmpty()) {
+                Text("Non hai mandato richieste.")
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    items(requests) { req ->
+                        val targetFile = files.find { it.id == req.photoId }
+                        val fileLabel = targetFile?.fileName?.ifEmpty { null } ?: "ID File: ${req.photoId.take(8)}..."
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("A: ${req.ownerName}", fontWeight = FontWeight.Bold)
+                                Text(fileLabel, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            StatusBadge(req.status)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Chiudi") } }
     )
 }
 
 @Composable
 fun StatusBadge(status: RequestStatus) {
     val color = when(status) {
-        RequestStatus.PENDING -> MaterialTheme.colorScheme.outline
-        RequestStatus.APPROVED -> Color(0xFF4CAF50)
-        RequestStatus.REJECTED -> MaterialTheme.colorScheme.error
+        RequestStatus.PENDING -> Color.Gray
+        RequestStatus.APPROVED -> Color.Green
+        RequestStatus.REJECTED -> Color.Red
     }
-    Surface(color = color.copy(0.1f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, color.copy(0.5f))) {
-        Text(status.name, color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-    }
-}
-
-@Composable
-fun ZeroToleranceMonitor(onStatus: (Boolean, String) -> Unit) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val executor = remember { Executors.newSingleThreadExecutor() }
-    val faceDetector = remember { FaceDetection.getClient(FaceDetectorOptions.Builder().build()) }
-    val labeler = remember { ImageLabeling.getClient(ImageLabelerOptions.Builder().setConfidenceThreshold(0.55f).build()) }
-
-    Box(Modifier.size(1.dp).alpha(0f)) {
-        AndroidView(factory = { ctx ->
-            val previewView = PreviewView(ctx)
-            ProcessCameraProvider.getInstance(ctx).addListener({
-                val cameraProvider = try { ProcessCameraProvider.getInstance(ctx).get() } catch (e: Exception) { null } ?: return@addListener
-                val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-                analysis.setAnalyzer(executor, object : ImageAnalysis.Analyzer {
-                    @androidx.camera.core.ExperimentalGetImage
-                    override fun analyze(proxy: ImageProxy) {
-                        analyzeFrame(proxy, faceDetector, labeler, onStatus)
-                    }
-                })
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
-            }, ContextCompat.getMainExecutor(ctx))
-            previewView
-        })
-    }
-}
-
-@androidx.camera.core.ExperimentalGetImage
-private fun analyzeFrame(proxy: ImageProxy, faceDetector: com.google.mlkit.vision.face.FaceDetector, labeler: com.google.mlkit.vision.label.ImageLabeler, onStatus: (Boolean, String) -> Unit) {
-    val image = proxy.image?.let { InputImage.fromMediaImage(it, proxy.imageInfo.rotationDegrees) }
-    if (image != null) {
-        // Analisi manuale della luminosità per rilevare l'oscuramento (dito sulla camera)
-        val buffer = proxy.planes[0].buffer
-        val data = ByteArray(buffer.remaining())
-        buffer.get(data)
-        
-        var totalBrightness = 0L
-        val step = 10 // Campionamento per performance
-        var samples = 0
-        for (i in data.indices step step) {
-            totalBrightness += (data[i].toInt() and 0xFF)
-            samples++
-        }
-        val avgBrightness = if (samples > 0) totalBrightness / samples else 0
-        
-        // Se la camera è coperta (avgBrightness molto basso), blocchiamo immediatamente
-        val isObscured = avgBrightness < 35 
-
-        labeler.process(image).addOnSuccessListener { labels ->
-            val detectedThreat = labels.any { label ->
-                val text = label.text.lowercase()
-                val conf = label.confidence
-                
-                val isPhone = (text.contains("phone") || text.contains("cellular") || text.contains("mobile")) && conf > 0.45f
-                val isGadget = (text.contains("gadget") || text.contains("electronic")) && conf > 0.60f
-                val isCamera = (text.contains("camera") || text.contains("lens")) && conf > 0.50f
-                
-                isPhone || isGadget || isCamera
-            }
-            
-            // L'app si blocca se viene rilevato un telefono O se la camera è coperta
-            onStatus(detectedThreat || isObscured, "")
-        }.addOnCompleteListener { proxy.close() }
-    } else proxy.close()
-}
-
-@Composable
-fun SecurityLockOverlay() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        // Schermata completamente nera come richiesto
+    Surface(color = color.copy(0.2f), shape = RoundedCornerShape(4.dp)) {
+        Text(status.name, color = color, fontSize = 10.sp, modifier = Modifier.padding(4.dp))
     }
 }
